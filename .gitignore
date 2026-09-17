@@ -1,0 +1,27 @@
+# Data & artifacts — never in git
+data/
+*.csv
+*.parquet
+models/
+mlruns/
+*.pkl
+*.joblib
+
+# Secrets
+.env
+*.pem
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
