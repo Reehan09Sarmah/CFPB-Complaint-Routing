@@ -1,6 +1,6 @@
 # ADR-0002: Domain and dataset
 
-- **Status:** PROPOSED — awaiting Rex's decision
+- **Status:** Accepted
 - **Date:** 2026-09-17
 - **Decider:** Rex
 - **Phase:** 0
@@ -49,14 +49,14 @@ against. Hard requirements:
 - Cons: recsys evaluation is fiddly and can rabbit-hole; drift is subtler.
 
 ## Decision
+- CFPB Consumer Complaint Database
 
-<!-- Rex: fill this in, flip Status to ACCEPTED, then we proceed to task-0001. -->
 
 ## Why
 
-<!-- Rex writes this, in Rex's own words — not the agent. One paragraph you
-     could defend in an interview. If you can't yet, ask for a re-explanation
-     first. -->
+This is one of those project which has a serious real life use case. This project can  be
+used by many product/service based companies as their one way to find out what's happening with their products\
+and services and improve upon them based on the complaints
 
 ## Consequences
 
