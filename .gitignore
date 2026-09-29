@@ -1,8 +1,8 @@
 # Data & artifacts — never in git
-data/
-*.csv
-*.parquet
+# Note: data/complaints.csv.dvc IS committed (DVC fingerprint).
+# DVC manages data/.gitignore itself to exclude the actual CSV.
 models/
+*.parquet
 mlruns/
 *.pkl
 *.joblib
