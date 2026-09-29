@@ -25,6 +25,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -44,23 +45,34 @@ DATE_COL = "Date received"
 # ---------------------------------------------------------------------------
 # 1. Load data
 # ---------------------------------------------------------------------------
-def load_data(path: Path, sample_n: int | None = None) -> pd.DataFrame:
+def load_data(
+    path: Path, sample_n: int | None = None, chunksize: int = 200_000
+) -> pd.DataFrame:
     """
     Load the CSV and keep only rows that have a narrative.
 
     Why sample_n?  The full dataset is 5.5M rows. During development we use a
     small sample (e.g. 50_000) so the feedback loop is fast. Set sample_n=None
     to train on everything.
+
+    Why chunksize?  The file is 3.5GB. Reading it in chunks (instead of one
+    pd.read_csv call) lets us show a progress bar and drop null-narrative
+    rows chunk-by-chunk, instead of holding the full unfiltered file in
+    memory before the drop happens.
     """
     log.info("Loading data from %s", path)
-    df = pd.read_csv(
+    reader = pd.read_csv(
         path,
         usecols=[DATE_COL, TEXT_COL, LABEL_COL],  # only load what we need
         parse_dates=[DATE_COL],
         low_memory=False,
+        chunksize=chunksize,
     )
-    # Drop rows with no narrative text
-    df = df.dropna(subset=[TEXT_COL]).reset_index(drop=True)
+    chunks = [
+        chunk.dropna(subset=[TEXT_COL])
+        for chunk in tqdm(reader, desc="Reading CSV", unit="chunk")
+    ]
+    df = pd.concat(chunks, ignore_index=True)
     log.info("Rows with narrative: %s", len(df))
 
     if sample_n is not None and sample_n < len(df):
@@ -206,25 +218,42 @@ def train(
             }
         )
 
-        # -- Data --
+        # -- Stages --
+        # Note: the CSV-read stage (inside load_data) has its own granular
+        # per-chunk bar. The bar below just shows which of these 6 coarse
+        # stages is currently running -- sklearn's TF-IDF fit and Logistic
+        # Regression fit are single C/Fortran-level calls with no hook for
+        # per-iteration progress, so "Fitting" will sit still and then jump
+        # to done, not creep up incrementally.
+        stages = tqdm(total=6, desc="Pipeline", unit="stage")
+
+        stages.set_description("Loading data")
         df = load_data(DATA_PATH, sample_n=sample_n)
+        stages.update(1)
+
+        stages.set_description("Preprocessing")
         df = preprocess(df)
+        stages.update(1)
+
+        stages.set_description("Splitting by date")
         train_df, test_df = time_split(df, test_months=test_months)
+        stages.update(1)
 
         X_train, y_train = train_df[TEXT_COL], train_df[LABEL_COL]
         X_test, y_test = test_df[TEXT_COL], test_df[LABEL_COL]
 
-        # -- Train --
-        log.info("Training pipeline...")
+        stages.set_description("Fitting (TF-IDF + Logistic Regression)")
         pipeline = build_pipeline(max_features=max_features, C=C)
         pipeline.fit(X_train, y_train)
+        stages.update(1)
 
-        # -- Evaluate --
+        stages.set_description("Evaluating")
         metrics = evaluate(pipeline, X_test, y_test)
         mlflow.log_metrics(metrics)
+        stages.update(1)
         log.info("Metrics: %s", metrics)
 
-        # -- Log model --
+        stages.set_description("Logging model to MLflow")
         mlflow.sklearn.log_model(
             sk_model=pipeline,
             artifact_path="model",
@@ -232,6 +261,8 @@ def train(
             if register_model
             else None,
         )
+        stages.update(1)
+        stages.close()
         log.info("Run complete. Open MLflow UI: uv run mlflow ui")
 
 
