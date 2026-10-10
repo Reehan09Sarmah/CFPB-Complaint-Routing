@@ -111,7 +111,6 @@ def time_split(
 
     test_months: the most recent N months go into the test set.
     """
-    df = df.sort_values(DATE_COL)
     cutoff = df[DATE_COL].max() - pd.DateOffset(months=test_months)
     train = df[df[DATE_COL] <= cutoff]
     test = df[df[DATE_COL] > cutoff]
@@ -142,7 +141,6 @@ def build_pipeline(max_features: int, C: float) -> Pipeline:
       C: regularisation strength. Higher C = less regularisation = fits more
          tightly to training data (risk of overfitting).
       max_iter: how many optimisation steps before giving up.
-      n_jobs=-1: use all CPU cores.
     """
     return Pipeline(
         [
@@ -160,7 +158,6 @@ def build_pipeline(max_features: int, C: float) -> Pipeline:
                 LogisticRegression(
                     C=C,
                     max_iter=1000,
-                    n_jobs=-1,
                     class_weight="balanced",  # handles class imbalance automatically
                 ),
             ),
