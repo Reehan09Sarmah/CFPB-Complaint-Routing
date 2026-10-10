@@ -24,6 +24,7 @@ mlops-platform/                        <- the git repo root (and uv project)
 ├── decisions/                         <- ADRs, one file per decision
 ├── src/cfpb_mlops/                    <- installable Python package
 ├── tests/                             <- pytest suite
+├── notebooks/train_colab.ipynb        <- Colab runner: clones repo, reads CSV from Drive, calls train()
 ├── data/                              <- DVC-tracked dataset (gitignored CSV, tracked .dvc file)
 ├── .dvc/                              <- DVC's own config + local cache
 ├── pyproject.toml, uv.lock            <- dependency + tool config

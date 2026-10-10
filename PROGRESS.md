@@ -171,3 +171,9 @@ Format per entry:
 - Decisions made: No ADR. Flagged as cheap-to-reverse (a file move); Rex declined to write a Why, which AGENTS.md allows only for cheap-to-reverse decisions. An ADR-0009 can still be added later with Rex's own Why.
 - Next: first real train.py run; champion/challenger; dvc.yaml + DVC remote; Phase 2 FastAPI.
 - Notes / suggestions parked: unchanged from 2026-10-07 entry.
+## 2026-10-10 — Colab training notebook
+- Agent: Claude Code (Sonnet 5.5)
+- Done: Added notebooks/train_colab.ipynb (Drive-mounted CSV, clones the GitHub repo, calls train() directly so sample_n can be None, zips mlruns to Drive). Rex's machine cannot run the full dataset locally.
+- Decisions made: None (Colab is a run environment, not an architecture change).
+- Next: Rex uploads complaints.csv to Drive/cfpb/ and runs the notebook; record real accuracy/f1_macro here. Then champion/challenger, dvc.yaml + remote.
+- Notes / suggestions parked: MLflow runs from Colab live in a zip; import into local mlruns or re-run locally on a sample if the UI is wanted.
