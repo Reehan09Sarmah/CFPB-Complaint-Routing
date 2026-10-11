@@ -48,6 +48,8 @@ in the outer `CFPB Consumer Complaint/` folder; ignore it.)
 | ADR-0006 | Experiment tracking = MLflow, local file-store | ACCEPTED |
 | ADR-0007 | Data versioning = DVC, local cache | ACCEPTED |
 | ADR-0008 | Baseline model = TF-IDF + Logistic Regression | ACCEPTED |
+| ADR-0009 | Renamed CFPB labels: crosswalk to 2023 taxonomy + 2017-04-24 date floor + fail on unknown label | ACCEPTED |
+| ADR-0010 | Best model = rank by macro-F2, gated by per-class recall floors and a critical-class review-queue budget | ACCEPTED |
 
 Each ADR has a Context / Options / Decision / **Why** (Rex's own words) /
 Consequences. The Why is never written by an agent — see AGENTS.md.
@@ -234,3 +236,9 @@ local cache/tmp dirs from git (`/cache`, `/tmp`, `/config.local`).
   not half-finished. Nothing here blocks a commit on functional grounds.
   The only open item is the undocumented model-choice decision flagged
   above.
+
+
+## Update 2026-10-11 (ADR-0009 / ADR-0010 implemented)
+- `train.py`: `normalize_labels()` (date floor, crosswalk, card split by Sub-product, `ValueError` on unknown label) runs per chunk inside `load_data` (which now also reads `Sub-product`). `evaluate()` adds `f2_macro`. `pr_curves()` saves per-class cutoff/precision/recall at recall levels 0..1 to `diagnostics/pr_curves.json`. `train_min_date` is logged as a param.
+- `tests/test_training.py`: 10 tests, now including the crosswalk, the unknown-label failure, `load_data` end to end, and `pr_curves`.
+- Numeric floors, the queue budget and the critical-class list are NOT set yet (ADR-0010 defers them to baseline v2); they will live in a config file.

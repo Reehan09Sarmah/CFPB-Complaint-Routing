@@ -20,10 +20,17 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
+import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    f1_score,
+    fbeta_score,
+    precision_recall_curve,
+)
 from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 
@@ -40,6 +47,59 @@ DATA_PATH = REPO_ROOT / "data" / "complaints.csv"
 TEXT_COL = "Consumer complaint narrative"
 LABEL_COL = "Product"
 DATE_COL = "Date received"
+SUB_COL = "Sub-product"
+
+# ADR-0009: the CFPB renamed its products in 2017 and 2023. Train only on the
+# 2017 taxonomy onward and map its names onto the current (2023) classes.
+LABEL_START = pd.Timestamp("2017-04-24")
+RENAMED = {
+    "Credit reporting, credit repair services, or other personal consumer reports": (
+        "Credit reporting or other personal consumer reports"
+    ),
+    "Payday loan, title loan, or personal loan": (
+        "Payday loan, title loan, personal loan, or advance loan"
+    ),
+}
+CARD_OLD = "Credit card or prepaid card"
+CARD_SPLIT = {  # old combined label -> new label, decided by Sub-product
+    "General-purpose credit card or charge card": "Credit card",
+    "Store credit card": "Credit card",
+    "General-purpose prepaid card": "Prepaid card",
+    "Gift card": "Prepaid card",
+    "Government benefit card": "Prepaid card",
+    "Payroll card": "Prepaid card",
+    "Student prepaid card": "Prepaid card",
+}
+CLASSES = {
+    "Credit reporting or other personal consumer reports",
+    "Debt collection",
+    "Credit card",
+    "Checking or savings account",
+    "Mortgage",
+    "Money transfer, virtual currency, or money service",
+    "Student loan",
+    "Vehicle loan or lease",
+    "Payday loan, title loan, personal loan, or advance loan",
+    "Prepaid card",
+    "Debt or credit management",
+}
+
+
+def normalize_labels(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Apply ADR-0009: drop pre-2017-04-24 rows, map renamed labels to the 2023
+    taxonomy, and raise if any label outside CLASSES remains (a new CFPB rename
+    must stop the run, not train silently on a dead label).
+    """
+    df = df[df[DATE_COL] >= LABEL_START].copy()
+    card = df[LABEL_COL] == CARD_OLD
+    df.loc[card, LABEL_COL] = df.loc[card, SUB_COL].map(CARD_SPLIT)
+    df[LABEL_COL] = df[LABEL_COL].replace(RENAMED)
+    df = df.dropna(subset=[LABEL_COL])  # card rows whose sub-product can't decide
+    unknown = set(df[LABEL_COL]) - CLASSES
+    if unknown:
+        raise ValueError(f"Unknown product labels (extend ADR-0009 mapping): {unknown}")
+    return df.drop(columns=SUB_COL)
 
 
 # ---------------------------------------------------------------------------
@@ -63,13 +123,13 @@ def load_data(
     log.info("Loading data from %s", path)
     reader = pd.read_csv(
         path,
-        usecols=[DATE_COL, TEXT_COL, LABEL_COL],  # only load what we need
+        usecols=[DATE_COL, TEXT_COL, LABEL_COL, SUB_COL],  # only what we need
         parse_dates=[DATE_COL],
         low_memory=False,
         chunksize=chunksize,
     )
     chunks = [
-        chunk.dropna(subset=[TEXT_COL])
+        normalize_labels(chunk.dropna(subset=[TEXT_COL]))
         for chunk in tqdm(reader, desc="Reading CSV", unit="chunk")
     ]
     df = pd.concat(chunks, ignore_index=True)
@@ -176,6 +236,7 @@ def evaluate(
     return {
         "accuracy": round(accuracy_score(y_test, preds), 4),
         "f1_macro": round(f1_score(y_test, preds, average="macro"), 4),
+        "f2_macro": round(fbeta_score(y_test, preds, beta=2, average="macro"), 4),
     }
 
 
@@ -194,6 +255,32 @@ def diagnostics(
     )
     baseline = round(float((y_test == y_train.mode()[0]).mean()), 4)
     return report, confusion, baseline
+
+
+def pr_curves(
+    pipeline: Pipeline, X_test: pd.Series, y_test: pd.Series
+) -> dict[str, dict[str, list[float]]]:
+    """
+    Per class: for each recall level 0.00..1.00, the strictest cutoff that still
+    reaches it, with the precision there. Lets a recall floor (ADR-0010) be
+    turned into a per-class cutoff and its false-alarm cost, without retraining.
+    """
+    proba = pipeline.predict_proba(X_test)
+    levels = np.linspace(0, 1, 101)
+    out: dict[str, dict[str, list[float]]] = {}
+    for k, cls in enumerate(pipeline.classes_):
+        y = (y_test == cls).to_numpy()
+        if not y.any():
+            continue
+        p, r, t = precision_recall_curve(y, proba[:, k])
+        i = np.searchsorted(-r[:-1], -levels, side="right") - 1
+        i = np.unique(np.clip(i, 0, len(t) - 1))
+        out[str(cls)] = {
+            "recall": r[i].round(4).tolist(),
+            "precision": p[i].round(4).tolist(),
+            "threshold": t[i].round(4).tolist(),
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -271,12 +358,16 @@ def train(
                 "n_train": len(train_df),
                 "n_test": len(test_df),
                 "n_classes": y_train.nunique(),
+                "train_min_date": train_df[DATE_COL].min().date(),
                 "train_max_date": train_df[DATE_COL].max().date(),
                 "test_min_date": test_df[DATE_COL].min().date(),
                 "test_max_date": test_df[DATE_COL].max().date(),
             }
         )
         mlflow.log_dict(report, "diagnostics/classification_report.json")
+        mlflow.log_dict(
+            pr_curves(pipeline, X_test, y_test), "diagnostics/pr_curves.json"
+        )
         mlflow.log_text(confusion.to_csv(), "diagnostics/confusion_matrix.csv")
         mlflow.log_dict(
             {

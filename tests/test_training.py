@@ -8,10 +8,14 @@ If this passes, the pipeline wiring is correct.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 from cfpb_mlops.training.train import (
     build_pipeline,
     diagnostics,
     evaluate,
+    load_data,
+    normalize_labels,
+    pr_curves,
     preprocess,
     time_split,
 )
@@ -108,6 +112,7 @@ def test_evaluate_returns_expected_keys() -> None:
     metrics = evaluate(pipeline, df[text_col], df[label_col])
     assert "accuracy" in metrics
     assert "f1_macro" in metrics
+    assert "f2_macro" in metrics
     assert 0.0 <= metrics["accuracy"] <= 1.0
     assert 0.0 <= metrics["f1_macro"] <= 1.0
 
@@ -125,3 +130,73 @@ def test_diagnostics_shapes() -> None:
     assert "Mortgage" in report and "macro avg" in report
     assert int(confusion.to_numpy().sum()) == len(df)
     assert 0.0 <= baseline <= 1.0
+
+
+def _raw(rows: list[tuple[str, str, str | None, str | None]]) -> pd.DataFrame:
+    cols = ["Date received", "Product", "Sub-product", "Consumer complaint narrative"]
+    df = pd.DataFrame(rows, columns=cols)
+    df["Date received"] = pd.to_datetime(df["Date received"])
+    return df
+
+
+OLD_CR = "Credit reporting, credit repair services, or other personal consumer reports"
+
+
+def test_normalize_labels_maps_renames_and_splits_card() -> None:
+    """ADR-0009: renames mapped, card label split by sub-product, old rows dropped."""
+    df = _raw(
+        [
+            ("2020-01-01", OLD_CR, "x", "a"),
+            ("2020-01-01", "Payday loan, title loan, or personal loan", "x", "b"),
+            ("2020-01-01", "Credit card or prepaid card", "Store credit card", "c"),
+            ("2020-01-01", "Credit card or prepaid card", "Gift card", "d"),
+            ("2020-01-01", "Credit card or prepaid card", None, "e"),
+            ("2024-01-01", "Mortgage", "x", "f"),
+            ("2016-01-01", "Bank account or service", "x", "g"),
+        ]
+    )
+    out = normalize_labels(df)
+    assert out["Product"].tolist() == [
+        "Credit reporting or other personal consumer reports",
+        "Payday loan, title loan, personal loan, or advance loan",
+        "Credit card",
+        "Prepaid card",
+        "Mortgage",
+    ]
+    assert "Sub-product" not in out.columns
+
+
+def test_normalize_labels_fails_on_unknown_label() -> None:
+    """A label we have never seen must stop the run, not train silently."""
+    with pytest.raises(ValueError):
+        normalize_labels(_raw([("2024-01-01", "Brand new product", "x", "a")]))
+
+
+def test_load_data_applies_crosswalk(tmp_path) -> None:
+    """load_data drops no-narrative and pre-2017 rows and applies the mapping."""
+    csv = tmp_path / "c.csv"
+    _raw(
+        [
+            ("2016-01-01", "Consumer Loan", "", "too old"),
+            ("2018-05-05", "Payday loan, title loan, or personal loan", "", "mapped"),
+            ("2024-01-01", "Mortgage", "", "kept"),
+            ("2024-01-02", "Mortgage", "", None),
+        ]
+    ).to_csv(csv, index=False)
+    out = load_data(csv)
+    assert out["Product"].tolist() == [
+        "Payday loan, title loan, personal loan, or advance loan",
+        "Mortgage",
+    ]
+
+
+def test_pr_curves_cover_each_class() -> None:
+    """pr_curves() returns aligned recall/precision/threshold lists per class."""
+    df = make_fake_df(10)
+    text_col, label_col = "Consumer complaint narrative", "Product"
+    pipeline = build_pipeline(max_features=50, C=1.0)
+    pipeline.fit(df[text_col], df[label_col])
+    curves = pr_curves(pipeline, df[text_col], df[label_col])
+    assert set(curves) == set(df[label_col])
+    for c in curves.values():
+        assert len(c["recall"]) == len(c["precision"]) == len(c["threshold"])
