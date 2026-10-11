@@ -46,3 +46,7 @@ htmlcov/
 # Logs / scratch
 *.log
 tmp/
+
+# Colab run bundles (model + db)
+run_outputs/
+run_outputs*.zip
