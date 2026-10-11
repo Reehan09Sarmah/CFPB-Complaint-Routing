@@ -191,3 +191,10 @@ Format per entry:
 - Decisions made: None (diagnostics are additive; metric definitions unchanged).
 - Next: Rex reruns the notebook on Colab, drops run_outputs.zip into the repo folder (gitignored? check) and we verify it; then champion/challenger.
 - Notes / suggestions parked: log the DVC data md5 as a param for data lineage; the first run (chill-crane-423) is superseded.
+
+## 2026-10-11 — Verified the Colab bundle and analyzed run 507b2b3d
+- Agent: Claude Code (Sonnet 5.5)
+- Done: Bundle complete and consistent (commit 212cd39, n_train+n_test=500000, no date overlap, model loads and predicts). Findings: (1) model accuracy 0.6209 is BELOW the always-guess-majority baseline 0.7181, because class_weight="balanced" trades majority recall for minority recall; on macro-F1 the model (0.464) is far above the baseline (about 0.06). (2) Label taxonomy drift: 3 labels exist only in train (old "Credit reporting, credit repair services, or other personal consumer reports" 60,211 rows, "Credit card or prepaid card" 6,611, "Payday loan, title loan, or personal loan" 726) and have 0 test rows, yet 53,889 test predictions go to them. Mapping old names to successors lifts accuracy to about 0.81; macro-F1 over the 11 live classes is 0.590. (3) Class mix shifted: credit reporting 47.1% of train, 71.8% of test. (4) Real confusion remains: credit reporting vs debt collection (10,688 + 7,248), tiny classes weak ("Debt or credit management" F1 0.089). (5) Colab sklearn 1.6.1 vs local 1.9.1: model loads with a version warning.
+- Decisions made: None.
+- Pending (Rex): handling of renamed labels (data schema decision, load-bearing); definition of "best model" (accuracy vs macro-F1 vs per-class recall).
+- Next: teach + decide label handling; log train_min_date; rerun; then champion/challenger.
