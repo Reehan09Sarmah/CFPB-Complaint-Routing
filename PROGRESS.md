@@ -177,3 +177,10 @@ Format per entry:
 - Decisions made: None (Colab is a run environment, not an architecture change).
 - Next: Rex uploads complaints.csv to Drive/cfpb/ and runs the notebook; record real accuracy/f1_macro here. Then champion/challenger, dvc.yaml + remote.
 - Notes / suggestions parked: MLflow runs from Colab live in a zip; import into local mlruns or re-run locally on a sample if the UI is wanted.
+
+## 2026-10-11 — First real baseline (Colab) read back
+- Agent: Claude Code (Sonnet 5.5)
+- Done: Rex ran train_colab.ipynb (sample_n=500000, max_features=10000, C=1.0, test_months=6) and extracted the result into mlruns/. Read mlruns/mlflow.db: 1 run, accuracy 0.6209, f1_macro 0.4638. The db's artifact paths point at /content/mlruns/... on Colab; only mlflow.db arrived locally, so the model.pkl is NOT on this machine.
+- Decisions made: None.
+- Next: confirm whether Drive mlruns.zip contains the model folder; add a per-class report (precision/recall/F1 per product) so the 0.62 vs 0.46 gap can be explained; then champion/challenger.
+- Notes / suggestions parked: notebook has an uncommitted local edit to the zip line (not made by this session).
