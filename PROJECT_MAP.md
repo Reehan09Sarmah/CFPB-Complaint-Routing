@@ -104,6 +104,8 @@ extended next:
      product categories — without it the model could just predict the
      majority class and look accurate while being useless.
 
+5b. **`diagnostics(pipeline, X_test, y_test, y_train)`** - per-class report, confusion matrix, and the majority-class baseline accuracy. `train()` logs them as MLflow artifacts under `diagnostics/` plus `baseline_accuracy` and data-size/date params.
+
 5. **`evaluate(pipeline, X_test, y_test)`** — computes `accuracy` and
    `f1_macro`. Macro-F1 (not micro/weighted) is used because it averages
    the score across classes equally regardless of size — this matters

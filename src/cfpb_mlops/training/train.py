@@ -23,7 +23,7 @@ import mlflow.sklearn
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 
@@ -179,6 +179,23 @@ def evaluate(
     }
 
 
+def diagnostics(
+    pipeline: Pipeline, X_test: pd.Series, y_test: pd.Series, y_train: pd.Series
+) -> tuple[dict, pd.DataFrame, float]:
+    """
+    Per-class report, confusion matrix, and the "always guess the biggest
+    class" baseline accuracy. Needed to explain why accuracy and macro-F1
+    differ and whether the model beats a trivial guess.
+    """
+    preds = pipeline.predict(X_test)
+    report = classification_report(y_test, preds, output_dict=True, zero_division=0)
+    confusion = pd.crosstab(
+        y_test.rename("true"), pd.Series(preds, index=y_test.index, name="pred")
+    )
+    baseline = round(float((y_test == y_train.mode()[0]).mean()), 4)
+    return report, confusion, baseline
+
+
 # ---------------------------------------------------------------------------
 # 7 + 8. MLflow run
 # ---------------------------------------------------------------------------
@@ -246,7 +263,28 @@ def train(
 
         stages.set_description("Evaluating")
         metrics = evaluate(pipeline, X_test, y_test)
+        report, confusion, baseline = diagnostics(pipeline, X_test, y_test, y_train)
+        metrics["baseline_accuracy"] = baseline
         mlflow.log_metrics(metrics)
+        mlflow.log_params(
+            {
+                "n_train": len(train_df),
+                "n_test": len(test_df),
+                "n_classes": y_train.nunique(),
+                "train_max_date": train_df[DATE_COL].max().date(),
+                "test_min_date": test_df[DATE_COL].min().date(),
+                "test_max_date": test_df[DATE_COL].max().date(),
+            }
+        )
+        mlflow.log_dict(report, "diagnostics/classification_report.json")
+        mlflow.log_text(confusion.to_csv(), "diagnostics/confusion_matrix.csv")
+        mlflow.log_dict(
+            {
+                "train": y_train.value_counts().to_dict(),
+                "test": y_test.value_counts().to_dict(),
+            },
+            "diagnostics/class_counts.json",
+        )
         stages.update(1)
         log.info("Metrics: %s", metrics)
 

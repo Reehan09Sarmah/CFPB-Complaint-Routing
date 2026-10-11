@@ -184,3 +184,10 @@ Format per entry:
 - Decisions made: None.
 - Next: confirm whether Drive mlruns.zip contains the model folder; add a per-class report (precision/recall/F1 per product) so the 0.62 vs 0.46 gap can be explained; then champion/challenger.
 - Notes / suggestions parked: notebook has an uncommitted local edit to the zip line (not made by this session).
+
+## 2026-10-11 — Per-class diagnostics + reproducible Colab outputs
+- Agent: Claude Code (Sonnet 5.5)
+- Done: Rex chose option 1 (add per-class report and rerun). Added diagnostics() to train.py and logged classification_report.json, confusion_matrix.csv, class_counts.json, baseline_accuracy, n_train/n_test/n_classes and split dates. Rewrote the Colab notebook so it gathers model + diagnostics + mlflow.db + run_info.json (git commit, library versions, settings) into run_outputs.zip and asserts completeness before download. Found why the first run's model was missing: MLflow 3 with a sqlite store writes artifacts to ./mlruns (not ./mlartifacts) and the model file is model.skops, not model.pkl. Tested end to end locally on synthetic data; pytest 6 passed, ruff and mypy clean.
+- Decisions made: None (diagnostics are additive; metric definitions unchanged).
+- Next: Rex reruns the notebook on Colab, drops run_outputs.zip into the repo folder (gitignored? check) and we verify it; then champion/challenger.
+- Notes / suggestions parked: log the DVC data md5 as a param for data lineage; the first run (chill-crane-423) is superseded.

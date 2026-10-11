@@ -8,7 +8,13 @@ If this passes, the pipeline wiring is correct.
 from __future__ import annotations
 
 import pandas as pd
-from cfpb_mlops.training.train import build_pipeline, evaluate, preprocess, time_split
+from cfpb_mlops.training.train import (
+    build_pipeline,
+    diagnostics,
+    evaluate,
+    preprocess,
+    time_split,
+)
 
 # ---------------------------------------------------------------------------
 # Minimal fake dataset that mirrors the real CSV schema
@@ -104,3 +110,18 @@ def test_evaluate_returns_expected_keys() -> None:
     assert "f1_macro" in metrics
     assert 0.0 <= metrics["accuracy"] <= 1.0
     assert 0.0 <= metrics["f1_macro"] <= 1.0
+
+
+def test_diagnostics_shapes() -> None:
+    """diagnostics() returns a report, a confusion matrix, and a baseline."""
+    df = make_fake_df(10)
+    text_col, label_col = "Consumer complaint narrative", "Product"
+    pipeline = build_pipeline(max_features=50, C=1.0)
+    pipeline.fit(df[text_col], df[label_col])
+
+    report, confusion, baseline = diagnostics(
+        pipeline, df[text_col], df[label_col], df[label_col]
+    )
+    assert "Mortgage" in report and "macro avg" in report
+    assert int(confusion.to_numpy().sum()) == len(df)
+    assert 0.0 <= baseline <= 1.0
